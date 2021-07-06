@@ -2,6 +2,7 @@ package com.myorg;
 
 import software.amazon.awscdk.core.*;
 import software.amazon.awscdk.services.apigateway.LambdaIntegration;
+import software.amazon.awscdk.services.apigateway.Resource;
 import software.amazon.awscdk.services.apigateway.RestApi;
 import software.amazon.awscdk.services.dynamodb.*;
 import software.amazon.awscdk.services.lambda.Code;
@@ -54,7 +55,7 @@ public class InfrastructureStack extends Stack {
                                 .command(lambdaPackagingInstructions)
                                 .build())
                         .build()))
-                .handler("com.urlshortener.App")
+                .handler("com.urlshortener.UrlRedirection")
                 .memorySize(1024)
                 .timeout(Duration.seconds(10))
                 .logRetention(RetentionDays.ONE_MONTH)
@@ -64,9 +65,14 @@ public class InfrastructureStack extends Stack {
                 .restApiName("URLShortenerAPI")
                 .build();
 
-        LambdaIntegration getApiIntergration = LambdaIntegration.Builder.create(apiLambda).build();
+        LambdaIntegration getApiIntegration = LambdaIntegration.Builder.create(apiLambda).build();
 
-        restApi.getRoot().addMethod("GET", getApiIntergration);
+        Resource urlRedirection = Resource.Builder.create(this, "URLRedirection")
+                .parent(restApi.getRoot())
+                .pathPart("{shortUrl}")
+                .build();
+
+        urlRedirection.addMethod("GET", getApiIntegration);
 
         Table urlDetails = new Table(this, "urlDetails", TableProps.builder()
                 .billingMode(BillingMode.PAY_PER_REQUEST)
