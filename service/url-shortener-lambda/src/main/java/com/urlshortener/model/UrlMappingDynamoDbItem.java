@@ -12,10 +12,10 @@ import lombok.NoArgsConstructor;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@DynamoDBTable(tableName = "urlDetails")
-public class UrlDetails {
+@DynamoDBTable(tableName = "urlMapping")
+public class UrlMappingDynamoDbItem {
     @DynamoDBHashKey
-    private String shortUrl;
+    private String shortString;
     @DynamoDBAttribute
     private String longUrl;
 }

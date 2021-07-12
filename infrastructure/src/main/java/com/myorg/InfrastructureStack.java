@@ -48,7 +48,7 @@ public class InfrastructureStack extends Stack {
                 .user("root")
                 .outputType(ARCHIVED);
 
-        Function apiLambda = new Function(this, "APILambda", FunctionProps.builder()
+        Function urlRedirectionLambda = new Function(this, "URLRedirectionLambda", FunctionProps.builder()
                 .runtime(Runtime.JAVA_11)
                 .code(Code.fromAsset("../service/", AssetOptions.builder()
                         .bundling(builderOptions
@@ -65,30 +65,57 @@ public class InfrastructureStack extends Stack {
                 .restApiName("URLShortenerAPI")
                 .build();
 
-        LambdaIntegration getApiIntegration = LambdaIntegration.Builder.create(apiLambda).build();
+        LambdaIntegration urlRedirectionApiIntegration = LambdaIntegration.Builder.create(urlRedirectionLambda).build();
 
+        //URL Redirection API resource creation
         Resource urlRedirection = Resource.Builder.create(this, "URLRedirection")
                 .parent(restApi.getRoot())
-                .pathPart("{shortUrl}")
+                .pathPart("{shortString}")
                 .build();
 
-        urlRedirection.addMethod("GET", getApiIntegration);
+        //Adding integration to redirection lambda
+        urlRedirection.addMethod("GET", urlRedirectionApiIntegration);
+
+        Function urlShortenerLambda = new Function(this, "URLShortenerLambda", FunctionProps.builder()
+                .runtime(Runtime.JAVA_11)
+                .code(Code.fromAsset("../service/", AssetOptions.builder()
+                        .bundling(builderOptions
+                                .command(lambdaPackagingInstructions)
+                                .build())
+                        .build()))
+                .handler("com.urlshortener.UrlShortener")
+                .memorySize(1024)
+                .timeout(Duration.seconds(10))
+                .logRetention(RetentionDays.ONE_MONTH)
+                .build());
+
+        //Endpoint => domain/shorturl
+        Resource shortUrl = Resource.Builder.create(this, "shortURL")
+                .parent(restApi.getRoot())
+                .pathPart("shorturl")
+                .build();
+
+        LambdaIntegration urlMappingApiIntegration = LambdaIntegration.Builder.create(urlShortenerLambda).build();
+
+        shortUrl.addMethod("POST", urlMappingApiIntegration);
 
         Table urlDetails = new Table(this, "urlDetails", TableProps.builder()
                 .billingMode(BillingMode.PAY_PER_REQUEST)
-                .tableName("urlDetails")
+                .tableName("urlMapping")
                 .removalPolicy(RemovalPolicy.DESTROY)
                 .partitionKey(Attribute.builder()
-                        .name("shortUrl")
+                        .name("shortString")
                         .type(AttributeType.STRING)
                         .build())
                 .build());
 
-        urlDetails.grantReadWriteData(apiLambda.getRole());
+        urlDetails.grantReadWriteData(urlRedirectionLambda.getRole());
+        urlDetails.grantReadWriteData(urlShortenerLambda.getRole());
+
 
         new CfnOutput(this, "APILambdaARN", CfnOutputProps.builder()
                 .description("API lambda function ARN")
-                .value(apiLambda.getFunctionArn())
+                .value(urlRedirectionLambda.getFunctionArn())
                 .build());
 
         new CfnOutput(this, "URLShortenerAPI-URL", CfnOutputProps.builder()

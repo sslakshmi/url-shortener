@@ -22,16 +22,16 @@ public class UrlRedirection implements RequestHandler<APIGatewayProxyRequestEven
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
         try {
-            String shortUrl = request.getPathParameters().get("shortUrl");
-            String longUrl = dataManager.getLongUrl(shortUrl);
+            String shortString = request.getPathParameters().get("shortString");
+            String longUrl = dataManager.getLongUrl(shortString);
             return new APIGatewayProxyResponseEvent()
                     .withStatusCode(302)
                     .withHeaders(Map.of("Location", longUrl));
         } catch (IllegalArgumentException e) {
-            log.info("Invalid short URL", e);
+            log.info("Invalid short string", e);
             return new APIGatewayProxyResponseEvent()
                     .withStatusCode(400)
-                    .withBody("Invalid short URL, please try again with a valid URL");
+                    .withBody("Invalid short string, please try again with a valid URL");
         }
     }
 }
