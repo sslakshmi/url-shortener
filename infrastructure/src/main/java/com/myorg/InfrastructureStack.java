@@ -1,9 +1,8 @@
 package com.myorg;
 
 import software.amazon.awscdk.core.*;
-import software.amazon.awscdk.services.apigateway.LambdaIntegration;
+import software.amazon.awscdk.services.apigateway.*;
 import software.amazon.awscdk.services.apigateway.Resource;
-import software.amazon.awscdk.services.apigateway.RestApi;
 import software.amazon.awscdk.services.dynamodb.*;
 import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.lambda.Function;
@@ -13,6 +12,7 @@ import software.amazon.awscdk.services.logs.RetentionDays;
 import software.amazon.awscdk.services.s3.assets.AssetOptions;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
 import static java.util.Collections.singletonList;
@@ -63,6 +63,7 @@ public class InfrastructureStack extends Stack {
 
         RestApi restApi = RestApi.Builder.create(this, "URLShortenerAPI")
                 .restApiName("URLShortenerAPI")
+                .defaultCorsPreflightOptions(CorsOptions.builder().allowOrigins(Arrays.asList("*")).build())
                 .build();
 
         LambdaIntegration urlRedirectionApiIntegration = LambdaIntegration.Builder.create(urlRedirectionLambda).build();

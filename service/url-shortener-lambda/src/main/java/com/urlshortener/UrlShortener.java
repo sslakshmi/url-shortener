@@ -14,6 +14,8 @@ import com.urlshortener.persistence.DynamoDBDataManager;
 import lombok.AllArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 
+import java.util.HashMap;
+
 @AllArgsConstructor
 @Log4j2
 public class UrlShortener implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
@@ -38,6 +40,9 @@ public class UrlShortener implements RequestHandler<APIGatewayProxyRequestEvent,
             } else {
                 return new APIGatewayProxyResponseEvent()
                         .withStatusCode(200)
+                        .withHeaders(new HashMap<String, String>() {{
+                            put("Access-Control-Allow-Origin", "*");
+                        }})
                         .withBody(mapper.writeValueAsString(urlShortenerResponse));
             }
         } catch (JsonProcessingException e) {
