@@ -12,12 +12,14 @@ import com.urlshortener.model.UrlMappingDynamoDbItem;
 import com.urlshortener.model.UrlShortenerResponse;
 import com.urlshortener.persistence.DynamoDBDataManager;
 import lombok.AllArgsConstructor;
-import lombok.extern.log4j.Log4j2;
+import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
+import java.util.Map;
 
 @AllArgsConstructor
-@Log4j2
+@Slf4j
 public class UrlShortener implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
     public static final String INVALID_REQUEST = "Invalid request";
     private final DynamoDBDataManager dataManager;
@@ -26,13 +28,16 @@ public class UrlShortener implements RequestHandler<APIGatewayProxyRequestEvent,
         this.dataManager = new DynamoDBDataManager();
     }
 
+    @SneakyThrows
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent request, Context context) {
         String requestBody = request.getBody();
         ObjectMapper mapper = new ObjectMapper();
         try {
             UrlMappingDynamoDbItem urlMappingDynamoDbItem = mapper.readValue(requestBody, UrlMappingDynamoDbItem.class);
-            UrlShortenerResponse urlShortenerResponse = dataManager.createShortUrl(urlMappingDynamoDbItem);
+            Map<String, String> claims = (Map<String, String>) request.getRequestContext().getAuthorizer().get("claims");
+            String userId = claims.get("cognito:username");
+            UrlShortenerResponse urlShortenerResponse = dataManager.createShortUrl(urlMappingDynamoDbItem, userId);
             if (urlShortenerResponse.getHasError()) {
                 return new APIGatewayProxyResponseEvent()
                         .withStatusCode(400)
@@ -64,7 +69,7 @@ public class UrlShortener implements RequestHandler<APIGatewayProxyRequestEvent,
         try {
             errorMessage = mapper.writeValueAsString(urlShortenerResponse);
         } catch (JsonProcessingException jsonProcessingException) {
-            log.error(jsonProcessingException);
+            log.error("Json processing error",jsonProcessingException);
             return new APIGatewayProxyResponseEvent()
                     .withStatusCode(500)
                     .withBody(ErrorConstants.INTERNAL_SERVER_ERROR);

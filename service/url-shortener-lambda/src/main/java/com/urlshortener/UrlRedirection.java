@@ -7,11 +7,12 @@ import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent
 import com.urlshortener.persistence.DynamoDBDataManager;
 import lombok.AllArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Map;
 
 @AllArgsConstructor
-@Log4j2
+@Slf4j
 public class UrlRedirection implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
     private final DynamoDBDataManager dataManager;
 

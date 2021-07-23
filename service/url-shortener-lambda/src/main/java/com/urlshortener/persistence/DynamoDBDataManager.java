@@ -3,21 +3,36 @@ package com.urlshortener.persistence;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapperConfig;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBQueryExpression;
+import com.amazonaws.services.dynamodbv2.datamodeling.PaginatedQueryList;
 import com.urlshortener.constants.ErrorConstants;
 import com.urlshortener.model.ServiceError;
 import com.urlshortener.model.UrlMappingDynamoDbItem;
 import com.urlshortener.model.UrlShortenerResponse;
+import com.urlshortener.model.UrlsByUserIdResponse;
+import lombok.extern.log4j.Log4j2;
 import org.apache.logging.log4j.util.Strings;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
+@Log4j2
 public class DynamoDBDataManager {
     private final DynamoDBMapper mapper;
 
     public DynamoDBDataManager() {
+        String tableName = System.getenv("DynamoDbTableName");
+        if (Strings.isEmpty(tableName)) {
+            log.error("Table name not found in environment");
+            throw new RuntimeException("Invalid Table Name");
+        }
         AmazonDynamoDB dynamoDBClient = AmazonDynamoDBClientBuilder.standard().build();
-        mapper = new DynamoDBMapper(dynamoDBClient);
+        DynamoDBMapperConfig dynamoDBMapperConfig = DynamoDBMapperConfig.builder()
+                .withTableNameOverride(DynamoDBMapperConfig.TableNameOverride.withTableNameReplacement(tableName))
+                .build();
+        mapper = new DynamoDBMapper(dynamoDBClient, dynamoDBMapperConfig);
     }
 
     public String getLongUrl(String shortString) throws IllegalArgumentException {
@@ -28,7 +43,7 @@ public class DynamoDBDataManager {
         return urlMappingDynamoDbItem.getLongUrl();
     }
 
-    public UrlShortenerResponse createShortUrl(UrlMappingDynamoDbItem urlMappingDynamoDbItem) {
+    public UrlShortenerResponse createShortUrl(UrlMappingDynamoDbItem urlMappingDynamoDbItem, String userId) {
         String shortUrl = urlMappingDynamoDbItem.getShortString();
         UrlMappingDynamoDbItem existingUrlMappingDynamoDbItem;
         if (Strings.isEmpty(shortUrl)) {
@@ -42,6 +57,8 @@ public class DynamoDBDataManager {
             existingUrlMappingDynamoDbItem = mapper.load(UrlMappingDynamoDbItem.builder().shortString(shortUrl).build());
         }
         if (Objects.isNull(existingUrlMappingDynamoDbItem)) {
+            urlMappingDynamoDbItem.setCreatedBy(userId);
+            urlMappingDynamoDbItem.setCreatedAt(LocalDateTime.now());
             mapper.save(urlMappingDynamoDbItem);
             return UrlShortenerResponse.builder()
                     .hasError(false)
@@ -58,5 +75,20 @@ public class DynamoDBDataManager {
                     .serviceError(serviceError)
                     .build();
         }
+    }
+
+    public UrlsByUserIdResponse getShortUrls(String userId) {
+        UrlMappingDynamoDbItem urlMappingDynamoDbItemKey = UrlMappingDynamoDbItem.builder().createdBy(userId).build();
+        DynamoDBQueryExpression<UrlMappingDynamoDbItem> dynamoDBQueryExpression = new DynamoDBQueryExpression<UrlMappingDynamoDbItem>()
+                .withIndexName("createdByIndex")
+                .withHashKeyValues(urlMappingDynamoDbItemKey)
+                .withConsistentRead(false);
+
+        PaginatedQueryList<UrlMappingDynamoDbItem> urlMappingDynamoDbItems = mapper.query(UrlMappingDynamoDbItem.class, dynamoDBQueryExpression);
+
+        return UrlsByUserIdResponse.builder()
+                .urlDetails(UrlsByUserIdResponse.UrlDetails.fromUrlMappingDynamoDbItem(urlMappingDynamoDbItems))
+                .hasError(false)
+                .build();
     }
 }

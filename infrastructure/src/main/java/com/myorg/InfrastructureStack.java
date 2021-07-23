@@ -3,6 +3,9 @@ package com.myorg;
 import software.amazon.awscdk.core.*;
 import software.amazon.awscdk.services.apigateway.*;
 import software.amazon.awscdk.services.apigateway.Resource;
+import software.amazon.awscdk.services.cognito.SignInAliases;
+import software.amazon.awscdk.services.cognito.UserPool;
+import software.amazon.awscdk.services.cognito.UserPoolProps;
 import software.amazon.awscdk.services.dynamodb.*;
 import software.amazon.awscdk.services.lambda.Code;
 import software.amazon.awscdk.services.lambda.Function;
@@ -25,6 +28,29 @@ public class InfrastructureStack extends Stack {
 
     public InfrastructureStack(final Construct scope, final String id, final StackProps props) {
         super(scope, id, props);
+
+        Attribute sortKeyAttribute = Attribute.builder()
+                .name("createdAt")
+                .type(AttributeType.STRING)
+                .build();
+        Table urlDetails = new Table(this, "urlDetails", TableProps.builder()
+                .billingMode(BillingMode.PAY_PER_REQUEST)
+                .removalPolicy(RemovalPolicy.DESTROY)
+                .partitionKey(Attribute.builder()
+                        .name("shortString")
+                        .type(AttributeType.STRING)
+                        .build())
+                .build());
+
+        urlDetails.addGlobalSecondaryIndex(GlobalSecondaryIndexProps.builder()
+                .indexName("createdByIndex")
+                .partitionKey(Attribute.builder()
+                        .name("createdBy")
+                        .type(AttributeType.STRING)
+                        .build())
+                .sortKey(sortKeyAttribute)
+                .projectionType(ProjectionType.ALL)
+                .build());
 
         List<String> lambdaPackagingInstructions = Arrays.asList(
                 "/bin/sh",
@@ -59,6 +85,9 @@ public class InfrastructureStack extends Stack {
                 .memorySize(1024)
                 .timeout(Duration.seconds(10))
                 .logRetention(RetentionDays.ONE_MONTH)
+                .environment(new HashMap<>(){{
+                    put("DynamoDbTableName", urlDetails.getTableName());
+                }})
                 .build());
 
         RestApi restApi = RestApi.Builder.create(this, "URLShortenerAPI")
@@ -88,6 +117,20 @@ public class InfrastructureStack extends Stack {
                 .memorySize(1024)
                 .timeout(Duration.seconds(10))
                 .logRetention(RetentionDays.ONE_MONTH)
+                .environment(new HashMap<>(){{
+                    put("DynamoDbTableName", urlDetails.getTableName());
+                }})
+                .build());
+
+        UserPool urlShortenerUserPool = new UserPool(this, "UrlShortenerUserPool", UserPoolProps.builder()
+                .signInAliases(SignInAliases.builder()
+                        .email(true)
+                        .build())
+                .build());
+
+        Authorizer authorizer = new CognitoUserPoolsAuthorizer(this, "UrlShortenerAuthorizer", CognitoUserPoolsAuthorizerProps.builder()
+                .cognitoUserPools(Arrays.asList(urlShortenerUserPool))
+                .identitySource("method.request.header.Authorization")
                 .build());
 
         //Endpoint => domain/shorturl
@@ -98,20 +141,37 @@ public class InfrastructureStack extends Stack {
 
         LambdaIntegration urlMappingApiIntegration = LambdaIntegration.Builder.create(urlShortenerLambda).build();
 
-        shortUrl.addMethod("POST", urlMappingApiIntegration);
+        shortUrl.addMethod("POST", urlMappingApiIntegration, MethodOptions.builder()
+                .authorizer(authorizer)
+                .authorizationType(AuthorizationType.COGNITO)
+                .build());
 
-        Table urlDetails = new Table(this, "urlDetails", TableProps.builder()
-                .billingMode(BillingMode.PAY_PER_REQUEST)
-                .tableName("urlMapping")
-                .removalPolicy(RemovalPolicy.DESTROY)
-                .partitionKey(Attribute.builder()
-                        .name("shortString")
-                        .type(AttributeType.STRING)
-                        .build())
+        Function urlsByUserIdLambda = new Function(this, "UrlsByUserIdLambda", FunctionProps.builder()
+                .runtime(Runtime.JAVA_11)
+                .code(Code.fromAsset("../service/", AssetOptions.builder()
+                        .bundling(builderOptions
+                                .command(lambdaPackagingInstructions)
+                                .build())
+                        .build()))
+                .handler("com.urlshortener.UrlsByUserId")
+                .memorySize(1024)
+                .timeout(Duration.seconds(10))
+                .logRetention(RetentionDays.ONE_MONTH)
+                .environment(new HashMap<>(){{
+                    put("DynamoDbTableName", urlDetails.getTableName());
+                }})
+                .build());
+
+        LambdaIntegration urlsByUsrIdApiIntegration = LambdaIntegration.Builder.create(urlsByUserIdLambda).build();
+
+        shortUrl.addMethod("GET", urlsByUsrIdApiIntegration, MethodOptions.builder()
+                .authorizer(authorizer)
+                .authorizationType(AuthorizationType.COGNITO)
                 .build());
 
         urlDetails.grantReadWriteData(urlRedirectionLambda.getRole());
         urlDetails.grantReadWriteData(urlShortenerLambda.getRole());
+        urlDetails.grantReadWriteData(urlsByUserIdLambda.getRole());
 
 
         new CfnOutput(this, "APILambdaARN", CfnOutputProps.builder()
